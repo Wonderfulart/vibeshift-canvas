@@ -1,1 +1,4 @@
 project_id = "dboxfdtwrxvqiekfxxyn"
+
+[functions.generate-vibe-assets]
+verify_jwt = true
