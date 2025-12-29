@@ -1,9 +1,14 @@
 import { motion } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut, User } from "lucide-react";
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { user, signOut, loading } = useAuth();
+  const navigate = useNavigate();
 
   const navLinks = [
     { label: "Features", href: "#features" },
@@ -11,6 +16,11 @@ const Navbar = () => {
     { label: "Gallery", href: "#gallery" },
     { label: "Pricing", href: "#pricing" },
   ];
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <motion.nav
@@ -21,12 +31,12 @@ const Navbar = () => {
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Logo */}
-        <a 
-          href="#" 
+        <Link 
+          to="/" 
           className="text-foreground text-sm font-semibold tracking-[0.3em] hover:text-primary transition-colors"
         >
           VIBESHIFT
-        </a>
+        </Link>
 
         {/* Center Navigation - Desktop */}
         <div className="hidden md:flex items-center gap-8">
@@ -41,20 +51,46 @@ const Navbar = () => {
           ))}
         </div>
 
-        {/* Right Side */}
-        <div className="hidden md:flex items-center gap-6">
-          <a 
-            href="#" 
-            className="text-foreground/80 text-sm font-medium hover:text-foreground transition-colors"
-          >
-            Sign In
-          </a>
-          <a 
-            href="#" 
-            className="text-sm font-medium px-4 py-2 rounded bg-primary/20 text-foreground hover:bg-primary/30 transition-colors"
-          >
-            Get Started
-          </a>
+        {/* Right Side - Desktop */}
+        <div className="hidden md:flex items-center gap-4">
+          {loading ? (
+            <div className="w-20 h-8 bg-muted/20 animate-pulse rounded" />
+          ) : user ? (
+            <>
+              <Link to="/studio">
+                <Button variant="ghost" size="sm" className="text-foreground/80 hover:text-foreground">
+                  Studio
+                </Button>
+              </Link>
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                <User className="w-4 h-4" />
+                <span className="max-w-[120px] truncate">{user.email}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                className="text-foreground/80 hover:text-foreground"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link 
+                to="/auth" 
+                className="text-foreground/80 text-sm font-medium hover:text-foreground transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link 
+                to="/auth" 
+                className="text-sm font-medium px-4 py-2 rounded bg-primary/20 text-foreground hover:bg-primary/30 transition-colors"
+              >
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -86,18 +122,48 @@ const Navbar = () => {
             </a>
           ))}
           <div className="pt-4 border-t border-border flex flex-col gap-3">
-            <a 
-              href="#" 
-              className="text-foreground/80 text-sm font-medium hover:text-foreground transition-colors"
-            >
-              Sign In
-            </a>
-            <a 
-              href="#" 
-              className="text-sm font-medium px-4 py-2 rounded bg-primary text-primary-foreground text-center"
-            >
-              Get Started
-            </a>
+            {user ? (
+              <>
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <User className="w-4 h-4" />
+                  <span className="truncate">{user.email}</span>
+                </div>
+                <Link 
+                  to="/studio"
+                  className="text-sm font-medium px-4 py-2 rounded bg-primary text-primary-foreground text-center"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Go to Studio
+                </Link>
+                <button
+                  onClick={() => {
+                    handleSignOut();
+                    setIsOpen(false);
+                  }}
+                  className="text-foreground/80 text-sm font-medium hover:text-foreground transition-colors flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link 
+                  to="/auth" 
+                  className="text-foreground/80 text-sm font-medium hover:text-foreground transition-colors"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Sign In
+                </Link>
+                <Link 
+                  to="/auth" 
+                  className="text-sm font-medium px-4 py-2 rounded bg-primary text-primary-foreground text-center"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </motion.div>
