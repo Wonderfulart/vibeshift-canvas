@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import AuroraBackground from "./AuroraBackground";
 import AudioVisualizer from "./AudioVisualizer";
 
@@ -47,9 +48,9 @@ const HeroSection = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.8 }}
         >
-          <button className="btn-primary">
+          <Link to="/studio" className="btn-primary">
             Create Video
-          </button>
+          </Link>
           <button className="btn-glass">
             View Gallery
           </button>
