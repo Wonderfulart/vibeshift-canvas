@@ -18,6 +18,13 @@ interface GenerationRequest {
   audio_url: string
 }
 
+const FALLBACK_SCENES: SceneDescription[] = [
+  { scene_number: 1, visual_prompt: "Cinematic opening shot, neon lights reflecting on wet streets at night, moody urban landscape", mood: "mysterious", duration_seconds: 15 },
+  { scene_number: 2, visual_prompt: "Close-up portrait shot with dramatic lighting, silhouette against colorful backdrop, emotional expression", mood: "intense", duration_seconds: 15 },
+  { scene_number: 3, visual_prompt: "Wide landscape shot, golden hour lighting, ethereal atmosphere, dreamy clouds", mood: "hopeful", duration_seconds: 15 },
+  { scene_number: 4, visual_prompt: "Abstract visual finale, particles and light trails, cosmic energy, vibrant colors", mood: "triumphant", duration_seconds: 15 }
+]
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -27,6 +34,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
     const vertexApiKey = Deno.env.get('VERTEX_API_KEY')
     const syncApiKey = Deno.env.get('SYNC_SO_API_KEY')
     const shotstackApiKey = Deno.env.get('SHOTSTACK_API_KEY')
@@ -48,15 +56,18 @@ Deno.serve(async (req) => {
     // ========================================
     console.log('[Step 1] Analyzing lyrics with Gemini...')
     
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${vertexApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `You are a music video director. Analyze these song lyrics and create exactly 4 visual scene descriptions for a music video.
+    let scenes: SceneDescription[] = []
+    
+    try {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${vertexApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `You are a music video director. Analyze these song lyrics and create exactly 4 visual scene descriptions for a music video.
 
 LYRICS:
 ${lyrics}
@@ -74,21 +85,28 @@ Return ONLY valid JSON in this exact format, no markdown:
 }
 
 Make each visual_prompt vivid, cinematic, and suitable for AI image generation. Include lighting, colors, camera angles.`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          }
-        })
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2048,
+            }
+          })
+        }
+      )
+
+      console.log(`[Step 1] Gemini response status: ${geminiResponse.status}`)
+      
+      if (!geminiResponse.ok) {
+        const errorText = await geminiResponse.text()
+        console.error(`[Step 1] Gemini API error: ${errorText}`)
+        throw new Error(`Gemini API failed: ${geminiResponse.status}`)
       }
-    )
 
-    const geminiData = await geminiResponse.json()
-    console.log('[Step 1] Gemini response received')
+      const geminiData = await geminiResponse.json()
+      console.log('[Step 1] Gemini response received')
+      console.log(`[Step 1] Response preview: ${JSON.stringify(geminiData).slice(0, 300)}`)
 
-    let scenes: SceneDescription[] = []
-    try {
       const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
       // Extract JSON from potential markdown code blocks
       const jsonMatch = textContent.match(/\{[\s\S]*\}/)
@@ -97,60 +115,82 @@ Make each visual_prompt vivid, cinematic, and suitable for AI image generation. 
         scenes = parsed.scenes || []
       }
     } catch (parseError) {
-      console.error('[Step 1] Failed to parse Gemini response:', parseError)
-      // Fallback to default scenes
-      scenes = [
-        { scene_number: 1, visual_prompt: "Cinematic opening shot, neon lights reflecting on wet streets at night", mood: "mysterious", duration_seconds: 15 },
-        { scene_number: 2, visual_prompt: "Close-up portrait shot with dramatic lighting, silhouette against colorful backdrop", mood: "intense", duration_seconds: 15 },
-        { scene_number: 3, visual_prompt: "Wide landscape shot, golden hour lighting, ethereal atmosphere", mood: "hopeful", duration_seconds: 15 },
-        { scene_number: 4, visual_prompt: "Abstract visual finale, particles and light trails, cosmic energy", mood: "triumphant", duration_seconds: 15 }
-      ]
+      console.error('[Step 1] Failed to get/parse Gemini response:', parseError)
     }
 
-    console.log(`[Step 1] Parsed ${scenes.length} scenes`)
+    // Use fallback if no scenes were parsed
+    if (scenes.length === 0) {
+      console.log('[Step 1] No scenes parsed, using fallback scenes')
+      scenes = FALLBACK_SCENES
+    }
+
+    console.log(`[Step 1] Using ${scenes.length} scenes`)
 
     // ========================================
-    // STEP 2: Generate Images with Imagen 3
+    // STEP 2: Generate Images with Lovable AI
     // ========================================
-    console.log('[Step 2] Generating images with Imagen 3...')
+    console.log('[Step 2] Generating images with Lovable AI (gemini-3-pro-image-preview)...')
     
     const generatedImages: string[] = []
     
+    if (!lovableApiKey) {
+      console.error('[Step 2] LOVABLE_API_KEY not configured!')
+    }
+
     for (const scene of scenes) {
       try {
-        // Using Gemini's image generation capability (Imagen 3 via Vertex AI)
-        const imageResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${vertexApiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              instances: [{
-                prompt: `${scene.visual_prompt}, cinematic 4K, professional music video still, ${scene.mood} mood`
-              }],
-              parameters: {
-                sampleCount: 1,
-                aspectRatio: "16:9"
+        const imagePrompt = `${scene.visual_prompt}, cinematic 4K, professional music video still, ${scene.mood} mood, high quality, detailed`
+        
+        console.log(`[Step 2] Generating image for scene ${scene.scene_number}...`)
+        
+        const imageResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${lovableApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-3-pro-image-preview',
+            messages: [
+              {
+                role: 'user',
+                content: `Generate a cinematic image: ${imagePrompt}`
               }
-            })
-          }
-        )
+            ]
+          })
+        })
+
+        console.log(`[Step 2] Image response status for scene ${scene.scene_number}: ${imageResponse.status}`)
 
         if (imageResponse.ok) {
           const imageData = await imageResponse.json()
-          const imageBase64 = imageData.predictions?.[0]?.bytesBase64Encoded
-          if (imageBase64) {
-            // For now, store the base64 data URL (in production, upload to storage)
-            generatedImages.push(`data:image/png;base64,${imageBase64}`)
-            console.log(`[Step 2] Generated image for scene ${scene.scene_number}`)
+          console.log(`[Step 2] Image response preview: ${JSON.stringify(imageData).slice(0, 300)}`)
+          
+          // Check for image in response - Gemini image models return base64 in content
+          const content = imageData.choices?.[0]?.message?.content
+          
+          // Check if there's inline image data
+          const inlineData = imageData.choices?.[0]?.message?.inline_data
+          if (inlineData?.data) {
+            const mimeType = inlineData.mime_type || 'image/png'
+            generatedImages.push(`data:${mimeType};base64,${inlineData.data}`)
+            console.log(`[Step 2] Generated base64 image for scene ${scene.scene_number}`)
+          } else if (content && content.startsWith('data:image')) {
+            generatedImages.push(content)
+            console.log(`[Step 2] Got data URL for scene ${scene.scene_number}`)
+          } else {
+            // Fallback to placeholder
+            console.log(`[Step 2] No image data in response for scene ${scene.scene_number}, using placeholder`)
+            generatedImages.push(`https://picsum.photos/seed/${scene.scene_number + Date.now()}/1920/1080`)
           }
         } else {
-          console.log(`[Step 2] Image generation failed for scene ${scene.scene_number}, using placeholder`)
-          generatedImages.push(`https://picsum.photos/seed/${scene.scene_number}/1920/1080`)
+          const errorText = await imageResponse.text()
+          console.error(`[Step 2] Image generation failed for scene ${scene.scene_number}: ${errorText}`)
+          generatedImages.push(`https://picsum.photos/seed/${scene.scene_number + Date.now()}/1920/1080`)
         }
       } catch (imgError) {
         console.error(`[Step 2] Error generating image for scene ${scene.scene_number}:`, imgError)
-        generatedImages.push(`https://picsum.photos/seed/${scene.scene_number}/1920/1080`)
+        generatedImages.push(`https://picsum.photos/seed/${scene.scene_number + Date.now()}/1920/1080`)
       }
     }
 
@@ -198,12 +238,15 @@ Make each visual_prompt vivid, cinematic, and suitable for AI image generation. 
           })
         })
 
+        console.log(`[Step 3] Sync.so response status: ${syncResponse.status}`)
+
         if (syncResponse.ok) {
           const syncData = await syncResponse.json()
           syncedClips = syncData.output?.clips || []
           console.log(`[Step 3] Sync.so generated ${syncedClips.length} clips`)
         } else {
-          console.log('[Step 3] Sync.so request failed, using static images')
+          const errorText = await syncResponse.text()
+          console.log(`[Step 3] Sync.so request failed: ${errorText}`)
         }
       } catch (syncError) {
         console.error('[Step 3] Sync.so error:', syncError)
@@ -253,12 +296,13 @@ Make each visual_prompt vivid, cinematic, and suitable for AI image generation. 
           })
         })
 
+        console.log(`[Step 4] Shotstack response status: ${shotstackResponse.status}`)
+
         if (shotstackResponse.ok) {
           const shotstackData = await shotstackResponse.json()
           const renderId = shotstackData.response?.id
 
           if (renderId) {
-            // Poll for completion (simplified - in production use webhooks)
             console.log(`[Step 4] Shotstack render started: ${renderId}`)
             
             // Store render ID for later polling
@@ -273,7 +317,8 @@ Make each visual_prompt vivid, cinematic, and suitable for AI image generation. 
             finalVideoUrl = `pending:${renderId}`
           }
         } else {
-          console.log('[Step 4] Shotstack render failed')
+          const errorText = await shotstackResponse.text()
+          console.log(`[Step 4] Shotstack render failed: ${errorText}`)
         }
       } catch (shotstackError) {
         console.error('[Step 4] Shotstack error:', shotstackError)
