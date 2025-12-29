@@ -1,9 +1,12 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import AuroraBackground from "./AuroraBackground";
 import AudioVisualizer from "./AudioVisualizer";
 
 const HeroSection = () => {
+  const { user } = useAuth();
+
   return (
     <section className="scroll-snap-section relative flex flex-col items-center justify-center overflow-hidden">
       {/* Aurora Background */}
@@ -48,7 +51,7 @@ const HeroSection = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.8 }}
         >
-          <Link to="/studio" className="btn-primary">
+          <Link to={user ? "/studio" : "/auth"} className="btn-primary">
             Create Video
           </Link>
           <button className="btn-glass">

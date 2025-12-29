@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { 
   Upload, 
@@ -13,13 +13,15 @@ import {
   ChevronLeft,
   Volume2,
   SkipBack,
-  SkipForward
+  SkipForward,
+  LogOut
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -35,6 +37,9 @@ interface TimelineClip {
 }
 
 const Studio = () => {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  
   const [lyrics, setLyrics] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: "Hey! I'm your Director AI. Upload your audio and paste your lyrics, then I'll create a stunning music video for you." }
@@ -47,6 +52,11 @@ const Studio = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [timelineClips, setTimelineClips] = useState<TimelineClip[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -178,7 +188,12 @@ const Studio = () => {
           <div className="h-6 w-px bg-white/10" />
           <h1 className="text-lg font-semibold text-foreground tracking-wide">VIBESHIFT STUDIO</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {user && (
+            <span className="text-sm text-muted-foreground hidden sm:block max-w-[150px] truncate">
+              {user.email}
+            </span>
+          )}
           <Button 
             onClick={handleGenerate}
             disabled={isProcessing || !lyrics.trim()}
@@ -199,6 +214,14 @@ const Studio = () => {
           <Button variant="outline" className="border-white/20">
             <Download className="w-4 h-4 mr-2" />
             Export
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={handleSignOut}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="w-4 h-4" />
           </Button>
         </div>
       </header>
